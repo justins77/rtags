@@ -2434,13 +2434,17 @@ This includes both declarations and definitions."
 
 (defun rtags-current-token ()
   (save-excursion
-    (when (looking-at "[0-9A-Za-z_~#]")
-      (while (and (> (point) (point-min)) (looking-at "[0-9A-Za-z_~#]"))
+    (unless (looking-at "[0-9A-Za-z_~#:]")
+      (backward-char))
+    (when (looking-at "[0-9A-Za-z_~#:]")
+      (while (and (> (point) (point-min)) (not (looking-at "[0-9A-Za-z_~#:]")))
         (backward-char))
-      (when (not (looking-at "[0-9A-Za-z_~#]"))
+      (while (and (> (point) (point-min)) (looking-at "[0-9A-Za-z_~#:]"))
+        (backward-char))
+      (when (not (looking-at "[0-9A-Za-z_~#:]"))
         (forward-char))
       (let ((start (point)))
-        (while (looking-at "[0-9A-Za-z_~#]")
+        (while (looking-at "[0-9A-Za-z_~#:]")
           (forward-char))
         (buffer-substring-no-properties start (point))))))
 
@@ -4383,7 +4387,8 @@ With optional PREFIX insert include at point."
                        (format "Symbol (default: %s): " token)
                      "Symbol: "))
            (input (if (fboundp 'completing-read-default)
-                      (completing-read-default prompt #'rtags-symbolname-complete nil nil nil 'rtags-symbol-history)
+                      ;(completing-read-default prompt #'rtags-symbolname-complete nil nil nil 'rtags-symbol-history)
+                      (completing-read-default "Symbol: " #'rtags-symbolname-complete nil nil token 'rtags-symbol-history)
                     (completing-read prompt #'rtags-symbolname-complete nil nil nil 'rtags-symbol-history)))
            (current-file (rtags-buffer-file-name)))
       (setq rtags-symbol-history (rtags-remove-last-if-duplicated rtags-symbol-history))
@@ -4403,6 +4408,10 @@ With optional PREFIX insert include at point."
                               ;; (message "Results:\n%s" (buffer-substring-no-properties (point-min) (point-max)))
                               (completing-read "Choose: " (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n" t) nil t))))))
         (when include
+          ;; If a symbol was selected which is the completion of the token at point, insert the 
+          ;; remainder of the symbol which was selected, i.e. complete the full symbol.
+          (when (eq 0 (search token input))
+            (insert (substring input (length token))))
           (if prefix
               (insert include)
             (rtags-insert-include include)))))))

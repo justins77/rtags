@@ -710,7 +710,7 @@ CXChildVisitResult ClangIndexer::indexVisitor(CXCursor cursor)
             Log log(LogLevel::Error);
             log << cursor;
             CXCursor ref = clang_getCursorReferenced(cursor);
-            if (!clang_isInvalid(clang_getCursorKind(ref)) && !clang_equalCursors(ref, cursor)) {
+            if (!clang_isInvalid(clang_getCursorKind(ref)) && ref != cursor) {
                 log << "refs" << ref;
             }
             break;
@@ -728,7 +728,7 @@ CXChildVisitResult ClangIndexer::indexVisitor(CXCursor cursor)
         Log log(LogLevel::VerboseDebug);
         log << cursor;
         CXCursor ref = clang_getCursorReferenced(cursor);
-        if (!clang_isInvalid(clang_getCursorKind(ref)) && !clang_equalCursors(ref, cursor)) {
+        if (!clang_isInvalid(clang_getCursorKind(ref)) && ref != cursor) {
             log << "refs" << ref;
         }
     }
@@ -1364,7 +1364,14 @@ void ClangIndexer::handleBaseClassSpecifier(const CXCursor &cursor)
         return;
     }
 
-    ref = resolveTemplate(ref);
+    while (true) {
+        CXCursor tmp = resolveTypedef(resolveTemplate(ref));
+        if (tmp == ref) {
+            break;
+        } else {
+            ref = std::move(tmp);
+        }
+    }
     const String usr = ::usr(ref);
     if (usr.isEmpty()) {
         error() << "Couldn't find usr for" << clang_getCursorReferenced(cursor) << cursor << mLastClass;
@@ -1463,7 +1470,7 @@ CXChildVisitResult ClangIndexer::handleCursor(const CXCursor &cursor, CXCursorKi
                     bool blocked = false;
                     const Location loc = createLocation(clang_getCursorLocation(mLastCursor), &blocked);
                     if (loc.fileId()) {
-                        if (!clang_equalCursors(resolvedAuto.cursor, nullCursor) && clang_getCursorKind(resolvedAuto.cursor) != CXCursor_NoDeclFound) {
+                        if (resolvedAuto.cursor != nullCursor && clang_getCursorKind(resolvedAuto.cursor) != CXCursor_NoDeclFound) {
                             Symbol *cptr = 0;
                             if (handleReference(mLastCursor, CXCursor_TypeRef, loc, resolvedAuto.cursor, &cptr)) {
                                 cptr->symbolLength = 4;
@@ -1519,7 +1526,7 @@ CXChildVisitResult ClangIndexer::handleCursor(const CXCursor &cursor, CXCursorKi
             case CXCursor_ClassDecl:
             case CXCursor_ClassTemplate: {
                 const CXCursor destructor = RTags::findChild(referenced, CXCursor_Destructor);
-                if (!(clang_equalCursors(destructor, nullCursor))) {
+                if (destructor != nullCursor) {
                     const String destructorUsr = ::usr(destructor);
                     assert(!destructorUsr.isEmpty());
                     const Location scopeEndLocation = mScopeStack.back().end;
@@ -1723,7 +1730,7 @@ CXChildVisitResult ClangIndexer::handleCursor(const CXCursor &cursor, CXCursorKi
     case CXCursor_ClassDecl:
     case CXCursor_ClassTemplate: {
         const CXCursor specialization = clang_getSpecializedCursorTemplate(cursor);
-        if (!(clang_equalCursors(specialization, nullCursor))) {
+        if (specialization != nullCursor) {
             unit(location)->targets[location][::usr(specialization)] = 0;
             c.flags |= Symbol::TemplateSpecialization;
         }
@@ -2287,9 +2294,9 @@ CXChildVisitResult ClangIndexer::verboseVisitor(CXCursor cursor, CXCursor, CXCli
         if (u->indent >= 0)
             u->out += String(u->indent, ' ');
         u->out += RTags::cursorToString(cursor);
-        if (clang_equalCursors(ref, cursor)) {
+        if (ref == cursor) {
             u->out += " refs self";
-        } else if (!clang_equalCursors(ref, nullCursor)) {
+        } else if (ref != nullCursor) {
             u->out += " refs " + RTags::cursorToString(ref);
         }
 
@@ -2385,9 +2392,11 @@ CXCursor ClangIndexer::resolveTemplate(CXCursor cursor, Location location)
 {
     while (true) {
         const CXCursor general = clang_getSpecializedCursorTemplate(cursor);
+        if (clang_Cursor_isNull(general))
+            break;
         if (location.isNull())
             location = createLocation(cursor);
-        if (!clang_Cursor_isNull(general) && createLocation(general) == location) {
+        if (createLocation(general) == location) {
             cursor = general;
         } else {
             break;
@@ -2396,4 +2405,15 @@ CXCursor ClangIndexer::resolveTemplate(CXCursor cursor, Location location)
     return cursor;
 }
 
-
+CXCursor ClangIndexer::resolveTypedef(CXCursor cursor)
+{
+    while (clang_getCursorKind(cursor) == CXCursor_TypedefDecl) {
+        CXCursor typedeffed = clang_getTypeDeclaration(clang_getTypedefDeclUnderlyingType(cursor));
+        if (typedeffed != nullCursor) {
+            cursor = typedeffed;
+        } else {
+            break;
+        }
+    }
+    return cursor;
+}
