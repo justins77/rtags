@@ -5,5 +5,5 @@
               (indent-tabs-mode . nil))))
 ((cmake-mode . ((cmake-tab-width . 4)
                 (indent-tabs-mode . nil))))
-((nil . ((indent-tabs-mode . nil))))
-
+((nil . ((indent-tabs-mode . nil)
+         (justin-project-root . "/home/justin/rtags"))))

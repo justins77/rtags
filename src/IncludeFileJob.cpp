@@ -19,6 +19,9 @@
 #include "RTags.h"
 #include "Server.h"
 
+#include <stdlib.h>
+#include <iostream>
+
 IncludeFileJob::IncludeFileJob(const std::shared_ptr<QueryMessage> &query, const std::shared_ptr<Project> &project)
     : QueryJob(query, project)
 {
@@ -38,6 +41,9 @@ static inline List<Path> headersForSymbol(const std::shared_ptr<Project> &projec
 {
     List<Path> ret;
     const Path &path = loc.path();
+
+    //std::cout << "path: " << path.ref() << "\n";
+    
     if (path.isHeader()) {
         ret.append(path);
         if (const DependencyNode *node = project->dependencies().value(loc.fileId())) {
@@ -60,10 +66,11 @@ int IncludeFileJob::execute()
         return 1;
     }
     const Path directory = mSource.sourceFile().parentDir();
+    const Path aircam_root = "/home/skydio/aircam/";
     Set<Location> last;
     int matches = 0;
     Set<String> all;
-    auto process = [&directory, this, &all](const Set<Location> &locations) {
+    auto process = [&directory, this, &all, &aircam_root](const Set<Location> &locations) {
         for (Location loc : locations) {
             bool first = true;
             for (const Path &path : headersForSymbol(project(), loc)) {
@@ -78,16 +85,37 @@ int IncludeFileJob::execute()
                         break;
                 case CXCursor_FunctionDecl:
                 case CXCursor_FunctionTemplate: {
+
+                    //std::cout << "considering path: " << path.ref() << "\n";
+                    
                     List<String> alternatives;
-                    if (path.startsWith(directory))
-                        alternatives << String::format<256>("#include \"%s\"", path.mid(directory.size()).constData());
+                    //if (path.startsWith(directory))
+                    //    alternatives << String::format<256>("#include \"%s\"", path.mid(directory.size()).constData());
+
                     for (const Source::Include &inc : mSource.includePaths) {
-                        const Path p = inc.path.ensureTrailingSlash();
+
+                        //const Path p = inc.path.ensureTrailingSlash();
+                        //const Path p = inc.path.canonicalized().ensureTrailingSlash();
+
+                        char* s = realpath(inc.path.c_str(), NULL);
+                        const Path p = Path(s).ensureTrailingSlash();
+
+                        // std::cout << "include path: " << p.ref() << "\n";
+
+
                         if (path.startsWith(p)) {
-                            const String str = String::format<256>("#include <%s>", path.mid(p.size()).constData());
-                            alternatives << str;
+                            if (p.ref() == "/home/skydio/aircam/") {
+                                const String str = String::format<256>("#include \"%s\"", path.mid(p.size()).constData());
+                                alternatives << str;
+                            } else {
+                                const String str = String::format<256>("#include <%s>", path.mid(p.size()).constData());
+                                alternatives << str;
+                            }
                         }
+
+                        delete s;
                     }
+                    
                     const int tail = strlen(path.fileName()) + 1;
                     List<String>::const_iterator it = alternatives.begin();
                     while (it != alternatives.end()) {

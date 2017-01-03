@@ -198,6 +198,9 @@ target_link_libraries(rc ${RTAGS_LIBRARIES})
 add_executable(rdm rdm.cpp)
 target_link_libraries(rdm ${RTAGS_LIBRARIES})
 
+add_executable(rtags_test rtags_test.cpp)
+target_link_libraries(rtags_test ${RTAGS_LIBRARIES})
+
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 add_executable(rp rp.cpp)
